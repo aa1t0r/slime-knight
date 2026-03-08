@@ -8,10 +8,11 @@ export default class PreloadScene extends Phaser.Scene {
   preload() {
     // load external assets generated earlier
     // only load images; we'll build the map data in code
-    this.load.image('tiles', '/assets/tilesets/tiles.png')
-    this.load.image('player', '/assets/sprites/player.png')
-    this.load.image('enemy', '/assets/sprites/enemy.png')
-    this.load.image('dragon', '/assets/sprites/dragon.png')
+    const base = import.meta.env.BASE_URL || '/'
+    this.load.image('tiles', base + 'assets/tilesets/tiles.png')
+    this.load.image('player', base + 'assets/sprites/player.png')
+    this.load.image('enemy', base + 'assets/sprites/enemy.png')
+    this.load.image('dragon', base + 'assets/sprites/dragon.png')
     // optional future assets: slime/player will reuse 'player' sprite for now
 
     // debug logging
