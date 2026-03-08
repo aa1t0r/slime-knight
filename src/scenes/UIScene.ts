@@ -23,8 +23,20 @@ export default class UIScene extends Phaser.Scene {
         this.xpText.setText(`XP: ${s.xp}/${need}`)
       } catch {}
     })
-    // Simple on-screen touch controls for mobile/tablet
+    // Simple on-screen touch controls for mobile/tablet (hidden on PC)
     try {
+      const isTouchLike = ((): boolean => {
+        try {
+          // coarse pointer or explicit touch capability
+          const coarse = (window as any).matchMedia?.('(pointer: coarse)')?.matches
+          const hasTouch = ('ontouchstart' in window) || (navigator as any).maxTouchPoints > 0
+          return !!(coarse || hasTouch)
+        } catch { return false }
+      })()
+      if (!isTouchLike) {
+        // Do not render mobile buttons on non-touch devices
+        return
+      }
       const cam = this.cameras.main
       const w = cam.width, h = cam.height
       const baseX = 64
