@@ -1,0 +1,6 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "convert": true,
+        "npm install": true
+    }
+}
