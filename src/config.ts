@@ -1,2 +1,3 @@
 // Central game tuning constants
-export const SOUL_SPEED = 253 // px/s during dodge phase movement
+// Increased by ~20% from 253 -> 304 px/s
+export const SOUL_SPEED = 304 // px/s during dodge phase movement

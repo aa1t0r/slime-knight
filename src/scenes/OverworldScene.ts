@@ -21,6 +21,7 @@ export default class OverworldScene extends Phaser.Scene {
   ]
   private battleMenuTexts: Phaser.GameObjects.Text[] = []
   private battleMenuIndex: number = 0
+  private touchInput: Record<string, boolean> = { up: false, down: false, left: false, right: false }
 
   constructor() {
     super('Overworld')
@@ -155,6 +156,16 @@ export default class OverworldScene extends Phaser.Scene {
       right: Phaser.Input.Keyboard.KeyCodes.D
     }) as Record<string, Phaser.Input.Keyboard.Key>
     this.battleKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B)
+
+    // Hook up on-screen touch controls (from UI scene) for mobile
+    try {
+      const ui: any = this.scene.get('UI')
+      if (ui && ui.events) {
+        ui.events.on('dpad-down', (dir: string) => { try { this.touchInput[dir] = true } catch (e) {} }, this)
+        ui.events.on('dpad-up', (dir: string) => { try { this.touchInput[dir] = false } catch (e) {} }, this)
+        ui.events.on('action-down', () => { if (this.battleMenu) this.closeBattleMenu(); else this.openBattleMenu() }, this)
+      }
+    } catch (e) {}
 
     // VISUALS: Smooth dirt path bottom->top that connects to both gates
     const gateY = topGateY // just inside the opened wall
@@ -337,11 +348,15 @@ export default class OverworldScene extends Phaser.Scene {
     let vy = 0
 
     if (!this.battleMenu) {
-      // WASD with diagonal movement support
-      if (this.keys.left.isDown) vx = -speed
-      if (this.keys.right.isDown) vx = speed
-      if (this.keys.up.isDown) vy = -speed
-      if (this.keys.down.isDown) vy = speed
+      // WASD with diagonal movement support + touch D-pad
+      const leftDown = (this.keys.left && this.keys.left.isDown) || this.touchInput.left
+      const rightDown = (this.keys.right && this.keys.right.isDown) || this.touchInput.right
+      const upDown = (this.keys.up && this.keys.up.isDown) || this.touchInput.up
+      const downDown = (this.keys.down && this.keys.down.isDown) || this.touchInput.down
+      if (leftDown) vx = -speed
+      if (rightDown) vx = speed
+      if (upDown) vy = -speed
+      if (downDown) vy = speed
     }
 
     this.player.setVelocity(vx, vy)

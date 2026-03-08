@@ -66,6 +66,8 @@ export default class BattleScene extends Phaser.Scene {
   private purpleJumpHoldLeft: number = 0
   private purpleMaxJumpHeight: number = 160 // absolute cap from ground
   private jumpKey?: Phaser.Input.Keyboard.Key
+  private touchInput: Record<string, boolean> = { up: false, down: false, left: false, right: false }
+  private _actionPressed: boolean = false
   private purpleMaxUpSpeed: number = 520
   private purpleCoyoteMs: number = 90
   private purpleCoyoteLeft: number = 0
@@ -106,6 +108,16 @@ export default class BattleScene extends Phaser.Scene {
       try { this.input.keyboard!.off('keydown', this.handleMenuInput, this) } catch (e) {}
       this.input.keyboard!.on('keydown', this.handleMenuInput, this)
       this.movementKeys = this.input.keyboard!.addKeys({ up: Phaser.Input.Keyboard.KeyCodes.W, down: Phaser.Input.Keyboard.KeyCodes.S, left: Phaser.Input.Keyboard.KeyCodes.A, right: Phaser.Input.Keyboard.KeyCodes.D }) as Record<string, Phaser.Input.Keyboard.Key>
+      // Hook up touch controls from UI scene
+      try {
+        const ui: any = this.scene.get('UI')
+        if (ui && ui.events) {
+          ui.events.on('dpad-down', (dir: string) => this.onTouchDpadDown(dir), this)
+          ui.events.on('dpad-up', (dir: string) => this.onTouchDpadUp(dir), this)
+          ui.events.on('action-down', () => this.onTouchActionDown(), this)
+          ui.events.on('action-up', () => this.onTouchActionUp(), this)
+        }
+      } catch (e) {}
       this.events.on('shutdown', this.cleanup, this)
       debugLabel.setText('Battle: handlers set; ready')
       this.time.delayedCall(1200, () => { try { debugLabel.destroy() } catch (e) {} })
@@ -147,6 +159,8 @@ export default class BattleScene extends Phaser.Scene {
 
   private cleanup() {
     try { this.input.keyboard!.off('keydown', this.handleMenuInput, this) } catch (e) {}
+    try { this.input.off('pointermove', this.onPointerMove, this) } catch (e) {}
+    try { const ui: any = this.scene.get('UI'); if (ui && ui.events) { ui.events.off('dpad-down', this.onTouchDpadDown, this); ui.events.off('dpad-up', this.onTouchDpadUp, this); ui.events.off('action-down', this.onTouchActionDown, this); ui.events.off('action-up', this.onTouchActionUp, this) } } catch (e) {}
     if (this.enemyAttackTimer) { try { this.enemyAttackTimer.remove(false) } catch (e) {} }
     if (this.multiAttackWatchdog) { try { this.multiAttackWatchdog.remove(false) } catch (e) {} ; this.multiAttackWatchdog = undefined }
     if (this.bulletsCollider) { try { this.physics.world.removeCollider(this.bulletsCollider) } catch (e) {} ; this.bulletsCollider = undefined }
@@ -156,6 +170,39 @@ export default class BattleScene extends Phaser.Scene {
     try { if (this.soulAura) this.soulAura.destroy() } catch (e) {}
     this.multiAttackInProgress = false
     this.pendingSubAttacks = 0
+  }
+
+  // Touch handlers
+  private onTouchDpadDown(dir: string) {
+    try { this.touchInput[dir] = true } catch (e) {}
+    // In menu states, interpret up/down as selection
+    try {
+      if (this.state === BattleState.MENU || this.state === BattleState.TARGET) {
+        if (dir === 'up') this.moveSelection(-1)
+        if (dir === 'down') this.moveSelection(1)
+      }
+    } catch (e) {}
+  }
+  private onTouchDpadUp(dir: string) { try { this.touchInput[dir] = false } catch (e) {} }
+  private onTouchActionDown() { try { this._actionPressed = true } catch (e) {} ; try {
+      if (this.state === BattleState.MENU || this.state === BattleState.TARGET) this.confirmSelection()
+    } catch (e) {} }
+  private onTouchActionUp() { try { this._actionPressed = false } catch (e) {} }
+
+  private onPointerMove(pointer: Phaser.Input.Pointer) {
+    try {
+      if (this.state !== BattleState.ENEMY_ATTACK) return
+      if (!this.playerBox || !this.dodgeArea) return
+      if (!pointer.isDown) return
+      const worldX = pointer.worldX ?? pointer.x
+      const worldY = pointer.worldY ?? pointer.y
+      const { x, y, width, height } = this.dodgeArea.getBounds()
+      const hw = this.playerRadius || (this.playerBox.displayWidth / 2)
+      const hh = this.playerRadius || (this.playerBox.displayHeight / 2)
+      this.playerBox.x = Phaser.Math.Clamp(worldX, x + hw, x + width - hw)
+      this.playerBox.y = Phaser.Math.Clamp(worldY, y + hh, y + height - hh)
+      if (this.soulAura) { this.soulAura.x = this.playerBox.x; this.soulAura.y = this.playerBox.y }
+    } catch (e) {}
   }
 
   private status() {
@@ -331,6 +378,10 @@ export default class BattleScene extends Phaser.Scene {
           state.addGold(25)
           state.addXP(50)
           if (sprite) this.showFloatingGold(sprite.x, sprite.y, 25)
+        } else if (enemy.type === 'goblinKing') {
+          state.addGold(130)
+          state.addXP(250)
+          if (sprite) this.showFloatingGold(sprite.x, sprite.y, 130)
         }
       }
     } catch (e) {}
@@ -521,6 +572,12 @@ export default class BattleScene extends Phaser.Scene {
       this.soulAura.setAlpha(0.22)
     }
 
+    // Allow direct touch dragging into dodge area
+    try {
+      this.input.on('pointermove', this.onPointerMove, this)
+      this.input.on('pointerdown', this.onPointerMove, this)
+    } catch (e) {}
+
     // ensure movement keys exist
     if (!this.movementKeys) {
       this.movementKeys = this.input.keyboard!.addKeys({
@@ -650,8 +707,10 @@ export default class BattleScene extends Phaser.Scene {
       const body = this.playerBox.body as Phaser.Physics.Arcade.Body
       const speed = SOUL_SPEED
       // Horizontal velocity from input
-      if (keys.left.isDown) body.setVelocityX(-speed)
-      else if (keys.right.isDown) body.setVelocityX(speed)
+      const leftDown = (keys.left && keys.left.isDown) || this.touchInput.left
+      const rightDown = (keys.right && keys.right.isDown) || this.touchInput.right
+      if (leftDown) body.setVelocityX(-speed)
+      else if (rightDown) body.setVelocityX(speed)
       else body.setVelocityX(0)
 
       // Vertical motion: platformer style when Purple Mode; otherwise free-fly
@@ -664,6 +723,10 @@ export default class BattleScene extends Phaser.Scene {
         const dt = delta / 1000
         // buffer Space presses slightly before landing
         if (this.jumpKey && Phaser.Input.Keyboard.JustDown(this.jumpKey)) {
+          this.purpleJumpBufferLeft = this.purpleJumpBufferMs
+        }
+        // also accept action button taps as jump
+        if (this.purpleJumpBufferLeft <= 0 && (this._actionPressed)) {
           this.purpleJumpBufferLeft = this.purpleJumpBufferMs
         }
         // when releasing jump in-air, cancel upward momentum immediately (classic variable jump height)
